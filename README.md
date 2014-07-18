@@ -63,9 +63,67 @@ Presently there are 4 built-in, scriptable game objects.
 
 Sound:
 
-To play a sound, first add an mp3 to the 
+To play a sound, first add an mp3 to the Sounds folder of a project. For example: 
+Documents\BSCreator\Project_Name\Sounds\mp3name.mp3
+
+To script command to play that sound would then be:  play("mp3name.mp3") BSC knows to look for sounds in the Sounds
+Directory. If an mp3 cannot be found, the sound_missing.mp3 will be played instead.
 
 
+The Dictionary:
+
+Game variables are stored in a dictionary. The shorthand of [key] is used. For example, to use a new dictionary value:
+
+[key] = value
+
+[keyName] = "Some text here"
+
+This creates a new entry called keyName, and assigns the text "Some text here". The square brackets [] with the key text inside is all it takes to access this dictionary. Dictionary values can be used in the Story, or ButtonText. 
+
+
+The Item Bag:
+
+The Item Bag provides a way to add game items through the node's script. An item icon will be displayed for the item.
+The icon's dimensions should be 50x50 pixels. The format is .png.
+
+Here, the parameters are.
+
+Key: The filename of the icon png. For exmaple if the filename is icon.png, then the key is just "icon".
+Desc: The description of the item. For example "I'm an item. Look at me."
+Count: A numerical value attached to this item.
+
+bag.add ("key", "desc", count) //Add items to the bag.
+bag.add ("key", count)
+
+bag.set ("key", "desc", count) //Set the values of an existing item in the bag.
+bag.set ("key", count)
+
+bag.remove ("key") //Remove the item from the bag.
+
+bag.count ("key") //Return the count of this item. (Int)
+bag.desc ("key") //Return the description of this item. (String)
+bag.has ("key") //Return if this item exists in the bag. (Bool)
+
+
+The Story Position:
+
+From a node's script, the position of the currently selected node can be changed. Care must be given to ensure that
+a never ending loop is not created this way.
+
+To travel to another node in script:
+
+ID: The ID of the node to be traveled to. ID can be a string literal "string" or a stand-alone int such as: 1
+
+story.pos = "1"
+story.pos = 1
+
+Since script is executed before a node is displayed, a node that uses the story.pos property will not be shown to the player. Instead, the player will be shown the node for which the story.pos property re-directs to.
+
+
+Feel free to email me @ chris@codehadouken.com
+
+Sincerely,
+Verterax. AKA. Christopher Caldwell.
 
 
 
