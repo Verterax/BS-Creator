@@ -35,6 +35,21 @@ namespace BranchingStoryCreator
 
         #region Bag Access
 
+        public void Inc(string key, int count)
+        {
+            if (bag.ContainsKey(key))
+            {
+                bag[key].count += count;
+
+                if (bag[key].count <= 0)
+                    bag.Remove(key);
+            }
+            else
+            {
+                bag.Add(key, new Item(itemImgPath + key + IMG_EXT, "?", count));
+            }
+        }
+
         /// <summary>
         /// Add Item to bag. ItemName is key.
         /// </summary>
@@ -53,7 +68,6 @@ namespace BranchingStoryCreator
                 bag.Add(key, new Item(itemImgPath + key + IMG_EXT, desc, count));
             }
         }
-
         public void Add(string key, int count)
         {
             if (bag.ContainsKey(key))
@@ -68,6 +82,8 @@ namespace BranchingStoryCreator
                 bag.Add(key, new Item(itemImgPath + key + IMG_EXT, "?", count));
             }
         }
+
+
 
         public void Set(string key, int count)
         {
@@ -128,7 +144,12 @@ namespace BranchingStoryCreator
 
             foreach (string key in bag.Keys)
             {
-                string item = string.Format("{0} ( {1} )", Path.GetFileNameWithoutExtension(bag[key].imgURL), bag[key].count);
+                string item = "";
+                if (bag[key].count > 1)
+                    item = string.Format("{0} ( {1} )", Path.GetFileNameWithoutExtension(bag[key].imgURL), bag[key].count);
+                else
+                    item = string.Format("{0} ( {1} )", Path.GetFileNameWithoutExtension(bag[key].imgURL), bag[key].count);
+                      
                 values.Add(item);
             }
 

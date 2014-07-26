@@ -14,16 +14,18 @@ namespace BranchingStoryCreator
 {
     public partial class GameViewer : Form
     {
-
         const int MARGIN = 3;
         const int ITEM_SIZE = 50;
+        const string CANCEL_STRING = "$$";
 
-        GameObject GameObj;
-        List<string> StoryChunks;       
+        Random Rand;
+        GameObject GameObj;    
         Button[] Buttons;
         Point[] ButtonLocs;
         int ButtonAddSpace;
-        int chunkLoc;
+        bool PrintAll;
+        bool CancelPrinter;
+        string gotoButtonID;
         
 
         #region Init Load Construct
@@ -40,10 +42,14 @@ namespace BranchingStoryCreator
 
         private void Init(GameObject gameObj)
         {
+            this.Rand = new Random();
             this.GameObj = gameObj;
-            this.DoubleBuffered = true;                
+            this.DoubleBuffered = true;
+            this.gotoButtonID = ""; 
             InitButtons();
             AddEvents();
+
+            chkSoundEnabled.Checked = GameObj.SoundEnabled;
 
             BindScene();            
         }
@@ -71,17 +77,25 @@ namespace BranchingStoryCreator
 
         private void BindScene()
         {
-            PresentationObject presentation = GameObj.presentation;
-            rtfStory.Text = presentation.story;
+            rtfStory.Text = "";
+            rtfStory.Update();
 
+            PresentationObject presentation = GameObj.presentation;
             DisplayMainImg(presentation.imgURL);
 
             DisplayLife(presentation.life);
             DisplayMana(presentation.mana);
             DisplayStamina(presentation.stamina);
 
-            HandleButtons(presentation);
+            PrintAll = false;
+            CancelPrinter = false;
+           // DisplayStoryOverPeriod(2000);
+            DisplayStoryAtRate(50);
+
+            HideButtons();
             HandleItems(presentation);
+
+            pbrLife.Focus();
 
         }
 
@@ -140,21 +154,37 @@ namespace BranchingStoryCreator
             }
         }
 
-        private void MakeStoryChunks(string rawStory)
-        {
-            chunkLoc = 0;
-            string[] chunks = rawStory.Split('\n');
-            StoryChunks = chunks.ToList();
+        private void DisplayStoryOverPeriod(int timeSpan)
+        {         
+            int storyLen = GameObj.presentation.story.Length;
+
+            if (storyLen == 0)
+                return;
+
+            int delay = timeSpan / storyLen;
+            delay = (delay < 50) ? delay : 50;
+
+            StoryPrintingArgs printArgs = new StoryPrintingArgs(delay, 0, "", PrintCode.PrintSingle);
+
+            if (bwStoryWriter.IsBusy)
+                rtfStory.Text = GameObj.presentation.story;
+            else
+                bwStoryWriter.RunWorkerAsync(printArgs);
         }
 
-        private string GetStoryChunk()
+        private void DisplayStoryAtRate(int delay)
         {
-            string storyChunk = "Should not see.";
-            
-            if (StoryChunks.Count > chunkLoc)         
-                storyChunk = StoryChunks[chunkLoc];
+            StoryPrintingArgs printArgs = new StoryPrintingArgs(delay, 0, "", PrintCode.PrintSingle);
 
-            return storyChunk;
+            if (bwStoryWriter.IsBusy)
+                rtfStory.Text = GameObj.presentation.story;
+            else
+                bwStoryWriter.RunWorkerAsync(printArgs);
+        }
+
+        private void DisplayStoryAll(string story)
+        {
+            rtfStory.Text = story;
         }
 
         private void LoadImg(string filePath)
@@ -245,7 +275,14 @@ namespace BranchingStoryCreator
                 }
 
                 ToolTip tip = new ToolTip();
-                string tooltipText = string.Format("( {0} ) {1}", item.count, item.desc);
+                string tooltipText = "";
+                
+                if (item.count > 1)
+                    tooltipText = string.Format("( {0} ) {1}", item.count, item.desc);
+                else
+                    tooltipText = string.Format(item.desc);
+                           
+                
                 tip.SetToolTip(itemBox, tooltipText);    
                 
                 //Place item frames left to right, top to bottom.
@@ -266,6 +303,12 @@ namespace BranchingStoryCreator
         #endregion
 
         #region Buttons
+
+        private void HideButtons()
+        {
+            foreach (Button btn in Buttons)
+                btn.Visible = false;
+        }
 
         private void PerformButtonLayout(int activeButtons)
         {
@@ -304,9 +347,32 @@ namespace BranchingStoryCreator
             }
         }
 
-        private void HandleButtons(PresentationObject presentation)
+        private void RandomizeButtons(ref List<GameButton> gameButtons)
+        {
+            int randNum = 0;
+            int numButts = gameButtons.Count;
+
+            if (numButts < 2)
+                return;
+
+            for (int i = 0; i < 3; i++)
+                for (int b = 0; b < gameButtons.Count; b++)
+                {
+                    randNum = Rand.Next() % numButts;
+                    GameButton temp = gameButtons[b];
+                    gameButtons[b] = gameButtons[randNum];
+                    gameButtons[randNum] = temp;
+                }
+
+        }
+
+        private void HandleButtons(PresentationObject presentation, bool randomizeButtonOrder = false)
         {
             List<GameButton> gameButtons = presentation.buttonData;
+
+            if (randomizeButtonOrder)
+                RandomizeButtons(ref gameButtons);
+            
             int showCount = gameButtons.Count;
             int maxButtons = Buttons.Count();
 
@@ -348,8 +414,17 @@ namespace BranchingStoryCreator
             else
             {
                 GameButton gameButton = btn.Tag as GameButton;
-                if (!GameObj.ButtonPress(gameButton.NodeID, true))
-                    MessageBox.Show("Unable to navigate to node: " + gameButton.NodeID);
+
+                if (bwStoryWriter.IsBusy)
+                {
+                    //Wait for the Background worker to initiate the button press.
+                    //gotoButtonID = gameButton.NodeID;
+                    PrintAll = true;
+                    bwStoryWriter.CancelAsync();                              
+                }
+                else //Just go.
+                    if (!GameObj.ButtonPress(gameButton.NodeID, true))
+                        MessageBox.Show("Unable to navigate to node: " + gameButton.NodeID);             
             }
         }
 
@@ -362,6 +437,16 @@ namespace BranchingStoryCreator
 
         #endregion
 
+        #region Checkboxes
+
+        private void chkToggleSound_CheckedChanged(object sender, EventArgs e)
+        {
+            if (GameObj != null)
+                GameObj.ToggleSound(chkSoundEnabled.Checked);
+        }
+
+        #endregion
+
         #region Events
 
         private void AddEvents()
@@ -370,6 +455,25 @@ namespace BranchingStoryCreator
 
             foreach(Button btn in Buttons)
                 btn.Click += btn_Click;
+
+            foreach (Control ctrl in Controls)
+            {
+                bool next = false;
+                foreach (Button btn in Buttons)
+                    if (ctrl == btn)
+                        next = true;
+
+                if (next) continue;
+                if (ctrl == chkSoundEnabled)
+                    continue;
+
+                ctrl.KeyDown += OnKeyPress;
+                ctrl.MouseClick += OnMouseClick;
+            }
+
+            this.KeyDown += OnKeyPress;
+            this.MouseClick += OnMouseClick;
+
         }
 
 
@@ -379,7 +483,27 @@ namespace BranchingStoryCreator
 
             foreach (Button btn in Buttons)
                 btn.Click += btn_Click;
+
+            foreach (Control ctrl in Controls)
+            {
+                bool next = false;
+                foreach (Button btn in Buttons)
+                    if (ctrl == btn)
+                        next = true;
+
+                if (next) continue;
+                if (ctrl == chkSoundEnabled)
+                    continue;
+
+                ctrl.KeyDown -= OnKeyPress;
+                ctrl.MouseClick -= OnMouseClick;
+
+            }
+
+            this.KeyDown -= OnKeyPress;
+            this.MouseClick -= OnMouseClick;
         }
+
 
         private void OnPositionChanged(object sender, EventArgs e)
         {
@@ -388,7 +512,8 @@ namespace BranchingStoryCreator
 
         private void GameViewer_FormClosing(object sender, FormClosingEventArgs e)
         {
-            //RemoveEvents();
+            GameObj.StopSound();
+            bwStoryWriter.CancelAsync();           
         }
 
         private void GameViewer_FormClosed(object sender, FormClosedEventArgs e)
@@ -396,8 +521,174 @@ namespace BranchingStoryCreator
             this.Dispose();
         }
 
+        private void OnKeyPress(object sender, KeyEventArgs e)
+        {
+            if (bwStoryWriter.IsBusy)
+            {
+                PrintAll = true;
+                bwStoryWriter.CancelAsync();
+            }
+        }
+
+        private void OnMouseClick(object sender, MouseEventArgs e)
+        {
+            if (bwStoryWriter.IsBusy)
+            {
+                PrintAll = true;
+                bwStoryWriter.CancelAsync();
+            }
+        }
+
+
+        #endregion
+
+        #region Background Worker
+
+        //Get next character to print, and delay.
+        private void bwStoryWriter_DoWork(object sender, DoWorkEventArgs e)
+        {        
+            const int CANCEL_CHECK_INTERVAL = 2;
+
+            if (e.Argument == null)
+            {
+                e.Result = null;
+                return;
+            }
+         
+            StoryPrintingArgs printArgs = e.Argument as StoryPrintingArgs;
+            switch(printArgs.printCode)
+            {
+                case PrintCode.PrintAll:
+                    break;
+                case PrintCode.PrintSingle:
+                    printArgs.nextChar = GameObj.presentation.story[printArgs.printedCount].ToString();
+
+                    if (printArgs.nextChar == Environment.NewLine)
+                        printArgs.nextChar = "";
+
+                    for (int time = 0; time < printArgs.delay; time+= CANCEL_CHECK_INTERVAL)
+                    {
+                        //Sleep 
+                        System.Threading.Thread.Sleep(CANCEL_CHECK_INTERVAL); 
+ 
+                        //Check for cancel.
+                        if (bwStoryWriter.CancellationPending || CancelPrinter)
+                        {
+                            printArgs.printCode = (PrintAll) ? PrintCode.PrintAll : PrintCode.StopPrinting;   
+                            break;                         
+                        }                                 
+                    }            
+                    break;
+                case PrintCode.StopPrinting:
+                    break;
+            }
+
+            e.Result = printArgs;
+        }
+
+
+        private void bwStoryWriter_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            bool bwFinished = false;
+
+            StoryPrintingArgs printArgs = e.Result as StoryPrintingArgs;
+            int storyLen = GameObj.presentation.story.Length;
+                 
+            switch (printArgs.printCode)
+            {
+                case PrintCode.PrintAll:
+                    rtfStory.Text = GameObj.presentation.story;
+                    bwFinished = true;
+                    break;
+                case PrintCode.PrintSingle:
+
+                    if (rtfStory.Text.Length < storyLen)
+                        rtfStory.Text += printArgs.nextChar;
+
+                    printArgs.printedCount = rtfStory.Text.Length;
+                    if (printArgs.printedCount < storyLen &&
+                        !CancelPrinter)
+                        bwStoryWriter.RunWorkerAsync(printArgs);
+                    else
+                        bwFinished = true;
+                    break;
+                case PrintCode.StopPrinting:
+                    bwFinished = true;
+                    break; //Print no more.
+                default:
+                    break;
+            }
+
+
+            if (bwFinished)
+            {
+                if (gotoButtonID == "")
+                {
+                    HandleButtons(GameObj.presentation, true);
+                    rtfStory.Focus();
+                }
+                else
+                {
+                    if (!GameObj.ButtonPress(gotoButtonID, true))
+                        MessageBox.Show("Unable to navigate to node: " + gotoButtonID);
+
+                    gotoButtonID = "";
+                }
+            }
+
+
+        }
+
+        #endregion
+
+
+    }
+
+
+    public enum PrintCode
+    {
+        PrintSingle,
+        StopPrinting,
+        PrintAll
+    }
+
+    public class StoryPrintingArgs
+    {
+        #region Variables
+        public PrintCode printCode {get; set;}
+        public int delay {get; set;}
+        public int printedCount {get; set;}
+        public string nextChar {get; set;}
+        #endregion
+
+        #region Load / Init
+
+        public StoryPrintingArgs(PrintCode printCode)
+        {
+            Init(0, 0, "$$", printCode);
+        }
+        
+        public StoryPrintingArgs()
+        {
+             Init(0, 0, "$$", PrintCode.PrintSingle);
+        }
+
+        public StoryPrintingArgs(int delay, int printedCount, string nextChar, PrintCode printCode)
+        {
+            Init(delay, printedCount, nextChar, printCode);
+        }
+
+        private void Init(int delay, int printedCount, string nextChar, PrintCode printCode)
+        {
+            this.delay = delay;
+            this.printedCount = printedCount;
+            this.nextChar = nextChar;
+            this.printCode = printCode;
+        }
 
         #endregion
 
     }
+
+
 }

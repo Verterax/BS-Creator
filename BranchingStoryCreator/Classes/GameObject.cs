@@ -21,15 +21,16 @@ namespace BranchingStoryCreator
 
         private ItemBag bag;
         private Sound sound;
+
         private StoryTree tree;
         private TreeWrapper treeWrapper;
         private List<ScriptObject> scriptObjects;
 
-        public PresentationObject presentation { get; private set; }
+        public PresentationObject presentation { get; private set; }   
         public GameEditor editor { get; private set; }
-
         public string ResourcePath { get; private set; }
-        
+        public bool SoundEnabled { get; set; }
+
         #endregion
 
         #region Consts
@@ -75,6 +76,7 @@ namespace BranchingStoryCreator
             this.tree = tree;
             this.storyData = storyData;
             ResourcePath = resourcePath;
+            SoundEnabled = true;
 
             #region Scriptables
 
@@ -394,6 +396,7 @@ namespace BranchingStoryCreator
             dic.Clear();
             bag.Clear();
             //script.ExecuteStatementShorthand(tree.Script);
+            sound.StopAll();
             tree.pos = tree.ID;           
         }
 
@@ -410,6 +413,21 @@ namespace BranchingStoryCreator
         {
             DataNode current = tree.SelectedNode;
             presentation = new PresentationObject(GetBGImagePath(), dic, bag, current, script);
+        }
+
+        
+        #endregion
+
+        #region Sound Interface
+
+        public void ToggleSound(bool enableSound)
+        {
+            sound.SoundEnabled = enableSound;
+        }
+
+        public void StopSound()
+        {
+            sound.StopAll();
         }
 
         #endregion

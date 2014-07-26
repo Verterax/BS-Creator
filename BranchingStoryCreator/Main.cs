@@ -80,6 +80,13 @@ namespace BranchingStoryCreator
             if (Properties.Settings.Default.autoLoadLastProject)
             {
                 string lastProjectPath = Properties.Settings.Default.lastProjectPath;
+
+                if (lastProjectPath == "")
+                    lastProjectPath = GetDefaultProjectPath();
+
+                if (!File.Exists(lastProjectPath))
+                    lastProjectPath = GetDefaultProjectPath();
+
                 if (File.Exists(lastProjectPath))
                     LoadTree(lastProjectPath);
             }
@@ -113,10 +120,39 @@ namespace BranchingStoryCreator
             }
         }
 
+        private void btnCollapse_Click(object sender, EventArgs e)
+        {
+            if (GameObj != null)
+                treStory.CollapseAll();
+        }
+
+        private void btnExpand_Click(object sender, EventArgs e)
+        {
+            if (GameObj != null)
+                treStory.ExpandAll();
+        }
+
+        private void btnPlay_Click(object sender, EventArgs e)
+        {
+            PlayGame();
+        }
+
+
+
         private void btnTranspose_Click(object sender, EventArgs e)
         {
             tempStory = txtStory.Text;
             txtStory.Text = GameObj.dic.ReplaceKeysWithValues(txtStory.Text);
+        }
+
+        #endregion
+
+        #region Checkboxes
+
+        private void chkSoundEnabled_CheckedChanged(object sender, EventArgs e)
+        {
+            if (GameObj != null)
+                GameObj.ToggleSound(chkSoundEnabled.Checked);
         }
 
         #endregion
@@ -232,22 +268,7 @@ namespace BranchingStoryCreator
 
         private void runToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (GameObj == null)
-            {
-                MessageBox.Show("Cannot run an empty game.");
-                return;
-            }
-
-
-            if (viewerWindow != null)
-                viewerWindow.Close();
-
-            GameObj.StartFromBeginning();
-            UpdateGameItemsListView();
-            UpdateGameObjListView();
-            
-            viewerWindow = new GameViewer(GameObj);
-            viewerWindow.Show();
+            PlayGame();
         }
 
 
@@ -291,7 +312,10 @@ namespace BranchingStoryCreator
         /// <param name="e"></param>
         private void removeToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            RemoveSelectedNode();
+            DialogResult result = YesOrNoQuestion("Really delete this node? All children nodes will be deleted too.",
+                "Really? This is what you want?");
+            if (result == DialogResult.Yes)
+                RemoveSelectedNode();
         }
 
         #region View
@@ -358,6 +382,9 @@ namespace BranchingStoryCreator
         {
             if (e.Control && e.KeyCode == Keys.S)
                 SaveProject();
+
+            if (e.Alt && e.KeyCode == Keys.S)
+                ToggleStoryViewFocus();
         }
 
         #endregion
@@ -477,6 +504,10 @@ namespace BranchingStoryCreator
             if (data != null)
             {
                 selected = FindInTreeView(treStory, data);
+
+                if (selected == null)
+                    return;
+
                 treStory.SelectedNode = selected;
                 BindDataNodeValues(data);
                 ToggleInputFields(true);
@@ -634,8 +665,8 @@ namespace BranchingStoryCreator
 
         private void chkRun_CheckedChanged(object sender, EventArgs e)
         {
-            Properties.Settings.Default.runScript = chkDisableScript.Checked;
-            Properties.Settings.Default.Save();
+            //Properties.Settings.Default.runScript = chkDisableScript.Checked;
+           // Properties.Settings.Default.Save();
         }
 
         #endregion
@@ -732,7 +763,8 @@ namespace BranchingStoryCreator
             {
                 //Select the newly added node.
                 TreeNode treeNode = StoryTree.GetNode(treStory, newDataNode.ID);
-                treStory.SelectedNode = treeNode;            
+                treStory.SelectedNode = treeNode;
+                txtButtonText.Focus();
                 return true;
             }
         }
@@ -756,6 +788,7 @@ namespace BranchingStoryCreator
                 //Select the newly added node.
                 TreeNode treeNode = StoryTree.GetNode(treStory, newDataNode.ID);
                 treStory.SelectedNode = treeNode;
+                txtButtonText.Focus();
                 return true;
             }
         }
@@ -1070,6 +1103,28 @@ namespace BranchingStoryCreator
 
         #region View
 
+        private void PlayGame()
+        {
+            if (GameObj == null)
+            {
+                MessageBox.Show("Cannot run an empty game.");
+                return;
+            }
+
+
+            if (viewerWindow != null)
+                viewerWindow.Close();
+
+            treStory.SelectedNode = treStory.TopNode;
+
+            GameObj.StartFromBeginning();
+            UpdateGameItemsListView();
+            UpdateGameObjListView();
+
+            viewerWindow = new GameViewer(GameObj);
+            viewerWindow.Show();
+        }
+
         private void ToggleInputFields(bool turnOn)
         {
             txtID.Enabled = turnOn;
@@ -1091,6 +1146,14 @@ namespace BranchingStoryCreator
                 lstGameObj.Items.Clear();
                 lstItems.Items.Clear();
             }
+        }
+
+        private void ToggleStoryViewFocus()
+        {
+            if (tabCtrl.SelectedIndex == 0)
+                tabCtrl.SelectedIndex = 1;
+            else
+                tabCtrl.SelectedIndex = 0;
         }
 
         private void UpdateGameObjListView()
@@ -1149,6 +1212,9 @@ namespace BranchingStoryCreator
 
         private static TreeNode FindInTreeView(TreeView tree, DataNode data)
         {
+            if (tree.SelectedNode == null)
+                return null;
+
             if (tree.SelectedNode.Tag == data)
                 return tree.SelectedNode;
 
@@ -1280,6 +1346,8 @@ namespace BranchingStoryCreator
 
         }
 
+
+
         #endregion
 
         #region Preferences / Application Properties
@@ -1289,7 +1357,7 @@ namespace BranchingStoryCreator
         /// </summary>
         private void LoadProperties()
         {
-            chkDisableScript.Checked = Properties.Settings.Default.runScript;
+            //chkDisableScript.Checked = Properties.Settings.Default.runScript;
         }
 
         private string GetProjectsDir()
@@ -1297,8 +1365,12 @@ namespace BranchingStoryCreator
             return GameObject.GetWindowsProjectFolder();
         }
 
-        #endregion
+        private string GetDefaultProjectPath()
+        {
+            return Path.Combine(GetProjectsDir(), "Sonic_Game", "Sonic_Game" + StoryProject.PROJECT_EXT);
+        }
 
+        #endregion
 
         
     }

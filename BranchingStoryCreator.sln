@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BranchingStoryCreator", "Br
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestBSC", "TestBSC\TestBSC.csproj", "{3727AC63-05CB-4AE0-81F6-3BC683AD4B5E}"
 EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "BS-Creator-Installer", "BS-Creator-Installer\BS-Creator-Installer.vdproj", "{41DEC699-44CE-423D-B4D7-597323C2EEF6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,8 @@ Global
 		{3727AC63-05CB-4AE0-81F6-3BC683AD4B5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3727AC63-05CB-4AE0-81F6-3BC683AD4B5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3727AC63-05CB-4AE0-81F6-3BC683AD4B5E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{41DEC699-44CE-423D-B4D7-597323C2EEF6}.Debug|Any CPU.ActiveCfg = Debug
+		{41DEC699-44CE-423D-B4D7-597323C2EEF6}.Release|Any CPU.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

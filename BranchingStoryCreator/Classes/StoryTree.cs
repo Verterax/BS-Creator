@@ -10,8 +10,7 @@ using System.Xml.Serialization;
 using System.Xml;
 
 namespace BranchingStoryCreator
-{
-        
+{        
 
         [Serializable]
         public class DataNode

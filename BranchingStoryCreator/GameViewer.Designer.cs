@@ -43,9 +43,11 @@
             this.lblMana = new System.Windows.Forms.Label();
             this.lblHealth = new System.Windows.Forms.Label();
             this.lblStamina = new System.Windows.Forms.Label();
+            this.chkSoundEnabled = new System.Windows.Forms.CheckBox();
             this.pbrMana = new BranchingStoryCreator.VerticalProgressBar();
             this.pbrLife = new BranchingStoryCreator.VerticalProgressBar();
             this.pbrStamina = new BranchingStoryCreator.VerticalProgressBar();
+            this.bwStoryWriter = new System.ComponentModel.BackgroundWorker();
             ((System.ComponentModel.ISupportInitialize)(this.picImg)).BeginInit();
             this.panBag.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
@@ -211,6 +213,22 @@
             this.lblStamina.Text = "1000";
             this.lblStamina.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
+            // chkSoundEnabled
+            // 
+            this.chkSoundEnabled.AutoSize = true;
+            this.chkSoundEnabled.BackColor = System.Drawing.Color.Transparent;
+            this.chkSoundEnabled.CheckAlign = System.Drawing.ContentAlignment.BottomCenter;
+            this.chkSoundEnabled.Font = new System.Drawing.Font("Microsoft Sans Serif", 14.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.chkSoundEnabled.ForeColor = System.Drawing.SystemColors.ButtonHighlight;
+            this.chkSoundEnabled.Location = new System.Drawing.Point(28, 12);
+            this.chkSoundEnabled.Name = "chkSoundEnabled";
+            this.chkSoundEnabled.Size = new System.Drawing.Size(70, 42);
+            this.chkSoundEnabled.TabIndex = 34;
+            this.chkSoundEnabled.Text = "Sound";
+            this.chkSoundEnabled.TextAlign = System.Drawing.ContentAlignment.BottomCenter;
+            this.chkSoundEnabled.UseVisualStyleBackColor = false;
+            this.chkSoundEnabled.CheckedChanged += new System.EventHandler(this.chkToggleSound_CheckedChanged);
+            // 
             // pbrMana
             // 
             this.pbrMana.BackColor = System.Drawing.Color.Black;
@@ -247,6 +265,12 @@
             this.pbrStamina.TabIndex = 0;
             this.pbrStamina.Value = 50;
             // 
+            // bwStoryWriter
+            // 
+            this.bwStoryWriter.WorkerSupportsCancellation = true;
+            this.bwStoryWriter.DoWork += new System.ComponentModel.DoWorkEventHandler(this.bwStoryWriter_DoWork);
+            this.bwStoryWriter.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.bwStoryWriter_RunWorkerCompleted);
+            // 
             // GameViewer
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -255,6 +279,7 @@
             this.BackgroundImage = ((System.Drawing.Image)(resources.GetObject("$this.BackgroundImage")));
             this.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
             this.ClientSize = new System.Drawing.Size(895, 658);
+            this.Controls.Add(this.chkSoundEnabled);
             this.Controls.Add(this.lblStamina);
             this.Controls.Add(this.lblHealth);
             this.Controls.Add(this.lblMana);
@@ -306,5 +331,7 @@
         private System.Windows.Forms.Label lblStamina;
         private System.Windows.Forms.PictureBox pictureBox2;
         private System.Windows.Forms.PictureBox pictureBox1;
+        private System.Windows.Forms.CheckBox chkSoundEnabled;
+        private System.ComponentModel.BackgroundWorker bwStoryWriter;
     }
 }
