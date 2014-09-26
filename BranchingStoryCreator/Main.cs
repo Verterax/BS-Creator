@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
-using System.Linq;
+//using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
 using MSScriptControl;
+using BranchingStoryCreator.Web;
+using BranchingStoryCreator.Forms;
 
 namespace BranchingStoryCreator
 { 
@@ -18,21 +19,29 @@ namespace BranchingStoryCreator
         #region Variables
 
         public Button[] Buttons { get; set; }
-        //public TreeView MainTree { get; set; }
-
+        public StoryTree treeSnapshot { get; set; }
         public GameViewer viewerWindow { get; set; }
-        public GameObject GameObj { get; set; }
+        public Presentation currentPresentation { get; set; }
+
+        public WinSound soundPlayer { get; set; }
+
+        //Player and Game
+        public string gameName;
+        public string playerID = "0";
 
         //Behind the scenes
         private int countDown; //For timer.
         private string tempStory; //For story value-key replace
+
+        private DataNode lastParentofSelected;
+        private DataNode lastSelected;
 
         #endregion
 
         #region Constructors / Load / Init
         public Main()
         {
-            InitializeComponent();
+            InitializeComponent();          
         }
 
         private void Main_Load(object sender, EventArgs e)
@@ -53,6 +62,7 @@ namespace BranchingStoryCreator
         {
             AddKeyPressEvents();
             LoadProperties();
+            soundPlayer = new WinSound();
 
             //Instantiate Variables
             Buttons = new Button[5];
@@ -65,7 +75,7 @@ namespace BranchingStoryCreator
             Buttons[4] = btn4;
 
             //Initialize Undo Redo
-            UpdateUndoRedoMenu();
+            //UpdateUndoRedoMenu();
 
             ToggleInputFields(false);
 
@@ -75,6 +85,11 @@ namespace BranchingStoryCreator
             countDown = 0;
             tsMessage.Text = "";
             timer.Start();
+
+            //Initialize GameServer
+            string projDir = GetProjectsDir();
+            string templateDir = Application.StartupPath;
+            GameServer.Initialize(projDir, templateDir);
 
             //Auto load project?
             if (Properties.Settings.Default.autoLoadLastProject)
@@ -88,10 +103,12 @@ namespace BranchingStoryCreator
                     lastProjectPath = GetDefaultProjectPath();
 
                 if (File.Exists(lastProjectPath))
-                    LoadTree(lastProjectPath);
-            }
-                
+                {
+                    LoadTree(lastProjectPath);                   
+                }
+            }                
         }
+
 
         #endregion
 
@@ -122,13 +139,13 @@ namespace BranchingStoryCreator
 
         private void btnCollapse_Click(object sender, EventArgs e)
         {
-            if (GameObj != null)
+            if (treeSnapshot != null)
                 treStory.CollapseAll();
         }
 
         private void btnExpand_Click(object sender, EventArgs e)
         {
-            if (GameObj != null)
+            if (treeSnapshot != null)
                 treStory.ExpandAll();
         }
 
@@ -137,12 +154,46 @@ namespace BranchingStoryCreator
             PlayGame();
         }
 
-
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+            StopGame();
+            currentPresentation = GameServer.GetPresentation(gameName, playerID, true);
+            NavigateToPresentationNode();
+        }
 
         private void btnTranspose_Click(object sender, EventArgs e)
         {
-            tempStory = txtStory.Text;
-            txtStory.Text = GameObj.dic.ReplaceKeysWithValues(txtStory.Text);
+            //tempStory = txtStory.Text;
+            //txtStory.Text = GameObj.dic.ReplaceKeysWithValues(txtStory.Text);
+        }
+
+        //Meta 
+        private void btnSelectGameImg_Click(object sender, EventArgs e)
+        {
+            ShowPictureDialog(true);
+        }
+
+        private void btnPreview_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string gameImgPath = GameServer.GetBGImageDir(gameName) + txtGameImg.Text;
+
+                if (File.Exists(gameImgPath))
+                {
+                    Bitmap bitmap = new Bitmap(gameImgPath);
+                    imgBg.Image = bitmap;
+                }
+                else
+                {
+                    throw new Exception(string.Format("The file: {0} could not be found at: {1}", txtGameImg.Text, gameImgPath));
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(string.Format("Unable to show Game Image for: {0}. {1}", gameName, ex.Message));
+            }
+
         }
 
         #endregion
@@ -151,8 +202,8 @@ namespace BranchingStoryCreator
 
         private void chkSoundEnabled_CheckedChanged(object sender, EventArgs e)
         {
-            if (GameObj != null)
-                GameObj.ToggleSound(chkSoundEnabled.Checked);
+            if (chkSoundEnabled.Checked == false)
+                soundPlayer.StopAll();
         }
 
         #endregion
@@ -202,12 +253,12 @@ namespace BranchingStoryCreator
 
         private void undoToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            Undo();
+            //Undo();
         }
 
         private void redoToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            Redo();
+            //Redo();
         }
 
         #endregion
@@ -216,7 +267,7 @@ namespace BranchingStoryCreator
 
         private void bGImagesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string projectFolder = GameObj.GetBGImagePath();
+            string projectFolder = GameServer.GetBGImageDir(gameName);
             try
             {
                 System.Diagnostics.Process.Start(projectFolder);
@@ -229,7 +280,7 @@ namespace BranchingStoryCreator
 
         private void itemsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string projectFolder = GameObj.GetItemImgPath();
+            string projectFolder = GameServer.GetItemImgDir(gameName);
             try
             {
                 System.Diagnostics.Process.Start(projectFolder);
@@ -242,7 +293,7 @@ namespace BranchingStoryCreator
 
         private void soundsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string projectFolder = GameObj.GetSoundPath();
+            string projectFolder = GameServer.GetSoundDir(gameName);
             try
             {
                 System.Diagnostics.Process.Start(projectFolder);
@@ -276,33 +327,32 @@ namespace BranchingStoryCreator
 
         private void updateToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            DataNode data = treStory.SelectedNode.Tag as DataNode;
-            SetDataNodeValues(ref data);
-            ShowMinorMessage("Changes updated.", 3000);
+            DataNode node = treStory.SelectedNode.Tag as DataNode;
+            string errMsg = SetDataNodeValues(node);
+
+            if (errMsg == "")
+                ShowMinorMessage("Node successfully updated.", 2000);
+            else
+                MessageBox.Show("Unable to update node! " + errMsg);
         }
 
         #endregion
 
         #region Context Menu
 
-        /// <summary>
-        /// Add Child Node
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void addNodeToolStripMenuItem_Click(object sender, EventArgs e)
+        private void addNodeToolStripMenuItem_Click_1(object sender, EventArgs e)
         {
             AddChildNode();
         }
 
-        /// <summary>
-        /// Add Sibling Node
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void addSiblingToolStripMenuItem_Click(object sender, EventArgs e)
+        private void addSiblingToolStripMenuItem_Click_1(object sender, EventArgs e)
         {
             AddSiblingNode();
+        }
+
+        private void parentToolStripMenuItem_Click_1(object sender, EventArgs e)
+        {
+            AddParentNode();
         }
 
         /// <summary>
@@ -310,13 +360,20 @@ namespace BranchingStoryCreator
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void removeToolStripMenuItem_Click(object sender, EventArgs e)
+        private void removeSelectedStripMenuItem_Click(object sender, EventArgs e)
         {
-            DialogResult result = YesOrNoQuestion("Really delete this node? All children nodes will be deleted too.",
-                "Really? This is what you want?");
-            if (result == DialogResult.Yes)
-                RemoveSelectedNode();
+            RemoveSelectedNode();
         }
+
+        /// <summary>
+        /// Remove the selected and all its children.
+        /// </summary>
+        /// <returns></returns>
+        private void selectedAndChildrenStripMenuItem1_Click(object sender, EventArgs e)
+        {
+            RemoveSelectedNodeAndChildren();
+        }
+
 
         #region View
 
@@ -341,11 +398,7 @@ namespace BranchingStoryCreator
 
         private void AddEvents()
         {
-            GameObj.editor.NodeCount_Changed += UpdateTreeView;
-
-            GameObj.editor.Before_SelectionChange += StoryTree_BeforeSelect;
-            GameObj.editor.After_SelectionChange += StoryTree_AfterSelect;
-          
+         
             treStory.BeforeSelect += EditorTree_BeforeSelect;
             treStory.AfterSelect += EditorTree_AfterSelect;
 
@@ -356,9 +409,6 @@ namespace BranchingStoryCreator
 
         private void RemoveEvents()
         {
-            GameObj.editor.Before_SelectionChange -= StoryTree_BeforeSelect;
-            GameObj.editor.After_SelectionChange -= StoryTree_AfterSelect;
-
             treStory.BeforeSelect -= EditorTree_BeforeSelect;
             treStory.AfterSelect -= EditorTree_AfterSelect;
 
@@ -393,7 +443,7 @@ namespace BranchingStoryCreator
 
         private void Main_DragEnter(object sender, DragEventArgs e)
         {
-            if (GameObj != null)
+            if (treeSnapshot != null)
             {
                 if (e.Data.GetDataPresent(DataFormats.FileDrop))
                     e.Effect = DragDropEffects.All;
@@ -408,12 +458,12 @@ namespace BranchingStoryCreator
         private void Main_DragDrop(object sender, DragEventArgs e)
         {
 
-            if (GameObj == null)
+            if (treeSnapshot == null)
                 return;
 
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
-                string[] validImgExts = GameEditor.GetSupportedImageExt();
+                string[] validImgExts = StoryProject.GetSupportedImageExt();
                 string[] filePath = (string[])(e.Data.GetData(DataFormats.FileDrop));
                 foreach (string file in filePath)
                 {
@@ -421,7 +471,7 @@ namespace BranchingStoryCreator
                         if (Path.GetExtension(file) == ext)
                         {
                             string fileName = Path.GetFileName(file).Replace(' ', '_');
-                            string imgCopyTo = GameObj.GetBGImagePath() + fileName;
+                            string imgCopyTo = GameServer.GetBGImageDir(gameName) + fileName;
                             try
                             {
                                 //Copy if does not exist in resource folder.
@@ -477,79 +527,107 @@ namespace BranchingStoryCreator
 
         #region Tree View
 
-
-        private void StoryTree_BeforeSelect(object sender, ContextChangeEventArgs e)
+        private void SyncWithGameViewer(object sender, EventArgs e)
         {
-            //Save current values.
-            DataNode data = e.DataNode;
+            currentPresentation = GameServer.GetPresentation(gameName, playerID, false);
+            NavigateToPresentationNode();
+        }
+
+        private void EditorTree_BeforeSelect(object sender, TreeViewCancelEventArgs e)
+        {
+            //Get the selected node.
+            if (treStory.SelectedNode == null)
+                return;
+
+            DataNode data = treStory.SelectedNode.Tag as DataNode;
 
             if (data != null)
             {
-                SetDataNodeValues(ref data);
-                TreeNode lastNode = StoryTree.GetNode(treStory, data.ID);
+                SetDataNodeValues(data);
+                TreeNode lastNode = FormHelper.GetNode(treStory, data.ID);
 
                 if (lastNode != null)
-                    StoryTree.SetNodeText(ref lastNode, data, false);
+                    FormHelper.SetNodeText(ref lastNode, data, false);
             }
 
-            //Console.WriteLine("Story Before");
+            TreeNode node = e.Node;
+
+            if (node != null)
+            {
+                //DataNode data = node.Tag as DataNode;
+            }
+
+            Console.WriteLine("Editor Before");
         }
 
-        private void StoryTree_AfterSelect(object sender, ContextChangeEventArgs e)
+        private void EditorTree_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            //Bind current values.
-            DataNode data = e.DataNode;
+
+            DataNode data = e.Node.Tag as DataNode;
             TreeNode selected = null;
 
             if (data != null)
             {
                 selected = FindInTreeView(treStory, data);
-
                 if (selected == null)
                     return;
 
-                treStory.SelectedNode = selected;
+                EditResponse response = GameServer.MovePlayerToID(gameName, playerID, data.ID);
+
+                if (response.errMsg != "")
+                {
+                    MessageBox.Show(string.Format(
+                        "Unable to jump player to node: {0}. {1}", 
+                        data.ID,
+                        response.errMsg));
+                }
+
                 BindDataNodeValues(data);
                 ToggleInputFields(true);
-                UpdateGameItemsListView();
-                UpdateGameObjListView();
+                UpdatePlayerDataView();
+                if (currentPresentation == null ||
+                    data.ID != currentPresentation.nodeID)
+                {               
+                    currentPresentation = GameServer.GetPresentation(gameName, playerID);
+                }
+
+                if (currentPresentation.inputPending)
+                {
+                    
+                    InputBox box = new InputBox("Enter text.", currentPresentation.inputPrompt);
+                    box.ShowDialog();
+
+                    PresentationRequest request = new PresentationRequest(gameName, playerID);
+                    request.textResponse = box.textResponse;
+                    currentPresentation = GameServer.GetPresentation(request);
+                    NavigateToPresentationNode();                    
+                }
+
+
                 UpdateButtonView();
+
+                if (viewerWindow == null || !viewerWindow.Visible)
+                    if (chkSoundEnabled.Checked)
+                        soundPlayer.HandleSound(currentPresentation.sound);
             }
 
             if (data != null &&
                 selected != null)
             {
-                StoryTree.SetNodeText(ref selected, data, true);
+                FormHelper.SetNodeText(ref selected, data, true);
             }
 
-            //Console.WriteLine("Story After");
-        }
 
-
-        private void EditorTree_BeforeSelect(object sender, TreeViewCancelEventArgs e)
-        {
+            //Ask Game Viewer to select this node.
             TreeNode node = e.Node;
 
             if (node != null)
             {
-                DataNode data = node.Tag as DataNode;
-            }
+                //DataNode data = node.Tag as DataNode;
+                //GameObj.editor.SelectNode(data);
 
-            //Console.WriteLine("Editor Before");
-        }
-
-        private void EditorTree_AfterSelect(object sender, TreeViewEventArgs e)
-        {
-            //Ask StoryTree to select this node.
-            TreeNode node = e.Node;
-
-            if (node != null)
-            {
-                DataNode data = node.Tag as DataNode;
-                GameObj.editor.SelectNode(data);
-
-                if (treStory.DisplayRectangle.Contains(treStory.PointToClient(Cursor.Position)))
-                    UpdateViewerWindow();
+                //if (treStory.DisplayRectangle.Contains(treStory.PointToClient(Cursor.Position)))
+                //    UpdateViewerWindow();
             }
 
             
@@ -585,38 +663,36 @@ namespace BranchingStoryCreator
             {
                 Button btn = sender as Button;
                 GameButton data = btn.Tag as GameButton;
-                string nodeID = data.NodeID;
-                bool success = false;
+                string nodeID = data.ButtonID;
+                string previousNodeID = (currentPresentation != null) ? currentPresentation.nodeID : "";
+                string btnID = btn.Name.Replace("btn", "");
+     
+                PresentationRequest request = new PresentationRequest(gameName, playerID, btnID);
+                currentPresentation = GameServer.GetPresentation(request);
 
-                //Restart at start.
-                if (nodeID == "0")
-                {
-                    treStory.SelectedNode = treStory.TopNode;
-                    return;
-                }
+                string newNodeID = currentPresentation.nodeID;
 
-                success = GameObj.ButtonPress(nodeID, true); //Did the selection change?
-
-                if (!success)
+                if (previousNodeID == newNodeID)
                     MessageBox.Show("Unable to proceed to Node ID " + nodeID);
                 else
                 {
-                    UpdateGameObjListView();
-                    UpdateGameItemsListView();
+                    UpdatePlayerDataView();
+                    NavigateToPresentationNode();
                 }
                     
             }
         }
 
+
         private void btnExecute_Click(object sender, EventArgs e)
         {
-            ExecuteScript();
+            //ExecuteScript();
         }
 
         private void btnTranspose_MouseDown(object sender, MouseEventArgs e)
         {
             tempStory = txtStory.Text;
-            txtStory.Text = GameObj.dic.ReplaceKeysWithValues(txtStory.Text);
+            txtStory.Text = currentPresentation.story;
         }
 
         private void btnTranspose_MouseUp(object sender, MouseEventArgs e)
@@ -642,7 +718,7 @@ namespace BranchingStoryCreator
                 if (data != null)
                 {
                     data.ButtonText = txtButtonText.Text;
-                    StoryTree.SetNodeText(ref node, data, true);
+                    FormHelper.SetNodeText(ref node, data, true);
                 }
             }
         }
@@ -658,7 +734,7 @@ namespace BranchingStoryCreator
                 if (data != null)
                 {
                     data.ID = txtID.Text;
-                    StoryTree.SetNodeText(ref node, data, true);
+                    FormHelper.SetNodeText(ref node, data, true);
                 }
             }
         }
@@ -671,102 +747,166 @@ namespace BranchingStoryCreator
 
         #endregion
 
-        #region Undo / Redo
+        //#region Undo / Redo
 
-        private bool Undo()
-        {
-            //if (UndoStack.Count > 0)
-            //{
-            //    SetRedoPoint();
-            //    treStory.Nodes.Clear();
+        //private bool Undo()
+        //{
+        //    //if (UndoStack.Count > 0)
+        //    //{
+        //    //    SetRedoPoint();
+        //    //    treStory.Nodes.Clear();
 
-            //    TreeView popTree = UndoStack.Pop();
+        //    //    TreeView popTree = UndoStack.Pop();
 
-            //    treStory.Nodes.Clear();
-            //    StoryTreeManager.TransferNodes(popTree, ref treStory);
-            //    return true;
-            //}
-            //else
-                return false;
+        //    //    treStory.Nodes.Clear();
+        //    //    StoryTreeManager.TransferNodes(popTree, ref treStory);
+        //    //    return true;
+        //    //}
+        //    //else
+        //        return false;
 
-        }
+        //}
 
-        private bool Redo()
-        {
-            //if (RedoStack.Count > 0)
-            //{
-            //    SetUndoPoint();
-            //    treStory.Nodes.Clear();
+        //private bool Redo()
+        //{
+        //    //if (RedoStack.Count > 0)
+        //    //{
+        //    //    SetUndoPoint();
+        //    //    treStory.Nodes.Clear();
 
-            //    TreeView popTree = RedoStack.Pop();
+        //    //    TreeView popTree = RedoStack.Pop();
 
-            //    treStory.Nodes.Clear();
-            //    StoryTreeManager.TransferNodes(popTree, ref treStory);
-            //    return true;
-            //}
-            //else
-                return false;
-        }
+        //    //    treStory.Nodes.Clear();
+        //    //    StoryTreeManager.TransferNodes(popTree, ref treStory);
+        //    //    return true;
+        //    //}
+        //    //else
+        //        return false;
+        //}
 
-        private void SetUndoPoint()
-        {
-            //TreeView saveState = StoryTreeManager.CloneTree(treStory);
-            //UndoStack.Push(saveState);
+        //private void SetUndoPoint()
+        //{
+        //    //TreeView saveState = StoryTreeManager.CloneTree(treStory);
+        //    //UndoStack.Push(saveState);
 
-            //UpdateUndoRedoMenu();
-        }
+        //    //UpdateUndoRedoMenu();
+        //}
 
-        private void SetRedoPoint()
-        {
-            //TreeView saveState = StoryTreeManager.CloneTree(treStory);
-            //RedoStack.Push(saveState);
+        //private void SetRedoPoint()
+        //{
+        //    //TreeView saveState = StoryTreeManager.CloneTree(treStory);
+        //    //RedoStack.Push(saveState);
 
-            //UpdateUndoRedoMenu();
-        }
+        //    //UpdateUndoRedoMenu();
+        //}
 
-        private void UpdateUndoRedoMenu()
-        {
-            //if (UndoStack.Count > 0)
-            //    undoToolStripMenuItem.Enabled = true;
-            //else
-            //    undoToolStripMenuItem.Enabled = false;
+        //private void UpdateUndoRedoMenu()
+        //{
+        //    //if (UndoStack.Count > 0)
+        //    //    undoToolStripMenuItem.Enabled = true;
+        //    //else
+        //    //    undoToolStripMenuItem.Enabled = false;
 
-            //if (RedoStack.Count > 0)
-            //    redoToolStripMenuItem.Enabled = true;
-            //else
-            //    redoToolStripMenuItem.Enabled = false;
+        //    //if (RedoStack.Count > 0)
+        //    //    redoToolStripMenuItem.Enabled = true;
+        //    //else
+        //    //    redoToolStripMenuItem.Enabled = false;
 
-        }
+        //}
 
-        #endregion
+        //#endregion
 
         #region Editing
 
-        #region Add / Remove Nodes
-
-        public void UpdateTreeView(object sender, EventArgs e)
-        {
-            GameObj.editor.SyncTreeView(ref treStory);
-        }
-
-        private bool AddChildNode()
+        private bool PerformEdit(RequestType reqType)
         {
             DataNode selected = treStory.SelectedNode.Tag as DataNode;
-            DataNode newDataNode = GameObj.editor.AddNewNode(selected);     
+            EditResponse response = null;
 
-            if (newDataNode == null)
+            bool success = false;
+
+            if (selected == null)
             {
-                MessageBox.Show("Unable to add more nodes.");
-                return false;
+                MessageBox.Show("The selected node is null");
+                success = false;
             }
             else
             {
-                //Select the newly added node.
-                TreeNode treeNode = StoryTree.GetNode(treStory, newDataNode.ID);
-                treStory.SelectedNode = treeNode;
-                txtButtonText.Focus();
-                return true;
+                //Refresh the tree view.
+                response = GameServer.PostEditRequest(gameName, reqType, selected);
+
+                if (response.errMsg == "")
+                {
+                    ShowMinorMessage(string.Format("Successful edit. Affected nodes: {0}",
+                        response.nodesAffected), 3000);
+                    success = true;
+                }
+                else
+                {
+                    MessageBox.Show(string.Format("Request Error: {0}", response.errMsg));
+                    success = false;
+                }
             }
+
+            UpdateTreeView();
+            SelectLastOrParentOr(response.affectedID);
+            btnExpand.PerformClick();
+            
+            txtButtonText.Focus();
+
+            return success;
+        }
+
+        #region Add / Remove Nodes
+
+        public void UpdateTreeView()
+        {
+            treeSnapshot = GameServer.GetTree(gameName);           
+
+            if (treeSnapshot != null)
+            {
+                FormHelper.SetTreeViewData(treeSnapshot, ref treStory);
+            }
+            else
+            {
+                MessageBox.Show("Unable to refresh the tree view. Tree Snapshot for "
+                    + gameName + " could not be retrieved from the GameServer.");
+            }
+        }
+
+
+        /// <summary>
+        /// //Update DataNode in GameObject via GameServer.
+        /// </summary>
+        /// <param name="data"></param>
+        private string SetDataNodeValues(DataNode node)
+        {
+            //Not using node data, just making sure a node is selected.
+            if (node == null)
+                return "Cannot update GameObject. No node is selected.";
+
+            DataNode setNode = new DataNode();
+
+            // Create a DataNode to send to the GameServer.
+            setNode.ID = txtID.Text;
+            setNode.ImgPath = txtImgPath.Text;
+            setNode.ButtonText = txtButtonText.Text;
+            setNode.Story = txtStory.Text;
+            setNode.Script = txtScript.Text;
+            setNode.AvailIf = txtAvailIf.Text;
+
+            EditResponse response = GameServer.PostEditRequest(gameName, RequestType.Set, setNode);
+
+            return response.errMsg;
+        }
+
+        /// <summary>
+        /// Adds a node, and updates the tree view.
+        /// </summary>
+        /// <returns></returns>
+        private bool AddChildNode()
+        {
+            return PerformEdit(RequestType.AddChild);
         }
 
         /// <summary>
@@ -775,61 +915,40 @@ namespace BranchingStoryCreator
         /// <returns></returns>
         private bool AddSiblingNode()
         {
-            DataNode parent = GameObj.editor.GetParentOfSelectedNode();
-            DataNode newDataNode = GameObj.editor.AddNewNode(parent);  //Add child to parent (sibling)
-
-            if (newDataNode == null)
-            {
-                MessageBox.Show("Unable to add more nodes.");
-                return false;
-            }
-            else
-            {
-                //Select the newly added node.
-                TreeNode treeNode = StoryTree.GetNode(treStory, newDataNode.ID);
-                treStory.SelectedNode = treeNode;
-                txtButtonText.Focus();
-                return true;
-            }
+            return PerformEdit(RequestType.AddSibling);
         }
 
+        /// <summary>
+        /// Squeeze a node in between the current selected node and its parent.
+        /// </summary>
+        /// <returns></returns>
+        private bool AddParentNode()
+        {
+            return PerformEdit(RequestType.AddParent);
+        }
+
+        /// <summary>
+        /// Remove only the selected node.
+        /// </summary>
+        /// <returns></returns>
         private bool RemoveSelectedNode()
         {
-            DataNode selected = GameObj.editor.GetSelectedNode();
-            DataNode parent = GameObj.editor.GetParentOfSelectedNode();
-
-            if (selected == null ||
-                parent == null)
-                return false;
-
-            bool success = GameObj.editor.RemoveNode(parent, selected);
-
-            if (success)
-            {
-                TreeNode parentTreeNode = StoryTree.GetNode(treStory, parent.ID);
-                treStory.SelectedNode = parentTreeNode;
-            }
-            else
-                MessageBox.Show("Unable to remove node.");
-
-            return success;
+            return PerformEdit(RequestType.RemoveSelectedOnly);
         }
+
+        /// <summary>
+        /// Remove the selected node.
+        /// </summary>
+        /// <returns></returns>
+        private bool RemoveSelectedNodeAndChildren()
+        {
+            return PerformEdit(RequestType.RemoveSelectedAndChildren);
+        }
+
 
         #endregion
 
         #region Save Node Values
-        private void SetDataNodeValues(ref DataNode data)
-        {
-            if (data == null)
-                throw new Exception("Unable to update Data Node.");
-
-            data.ID = txtID.Text;
-            data.ImgPath = txtImgPath.Text;
-            data.ButtonText = txtButtonText.Text;
-            data.Story = txtStory.Text;
-            data.Script = txtScript.Text;
-            data.AvailIf = txtAvailIf.Text;
-        }
 
         /// <summary>
         /// Updates the selected data node with the values in the editor.
@@ -844,7 +963,7 @@ namespace BranchingStoryCreator
             if (selectedData == null)
                 return;
 
-            SetDataNodeValues(ref selectedData);
+            SetDataNodeValues(selectedData);
 
         }
 
@@ -853,29 +972,14 @@ namespace BranchingStoryCreator
             if (treStory.SelectedNode == null)
                 return null;
 
+            if (treStory.SelectedNode.Tag == null)
+                return null;
+
             return treStory.SelectedNode.Tag as DataNode;
         }
         #endregion
 
         #region Scripting
-
-        private void ExecuteScript()
-        {
-            try
-            {
-                GameObj.script.ExecuteStatementShorthand(txtScript.Text);
-            }
-            catch (Exception)
-            {
-                MessageBox.Show(GameObj.script.GetError());
-            }
-
-            UpdateGameObjListView();
-            UpdateGameItemsListView();
-
-        }
-
-
 
         #endregion
 
@@ -885,31 +989,37 @@ namespace BranchingStoryCreator
 
         private void SaveProject()
         {
-
-            if (GameObj == null)
+            if (treeSnapshot == null)
             {
                 MessageBox.Show("No project is open to save.");
                 return;
             }
 
+            string author = txtAuthor.Text;
+            string gameImg = txtGameImg.Text;
+            string about = txtAbout.Text;
 
-            //try
-            //{
-                SetSelectedDataNode();
-                GameObj.editor.SaveProject();
+
+            SetSelectedDataNode();
+
+            GameMeta meta = new GameMeta(gameName, author, about, gameImg);
+            EditResponse response = GameServer.SaveProject(gameName, meta);
+
+            if (response.errMsg == "")
+            {
                 ShowMinorMessage("Project saved!", 5000);
-            //}
-            //catch (Exception ex)
-            //{
-            //    MessageBox.Show("Unable to save project. " + ex.Message);
-            //}
+            }
+            else
+            {
+                MessageBox.Show("Unable to save project. " + response.errMsg);
+            }
         }
 
         private void CloseCurrentProject()
         {
-            if (GameObj != null)
+            if (treeSnapshot != null)
             {
-                PromtToSave();
+                //PromtToSave();
                 RemoveEvents();
             }
 
@@ -921,8 +1031,15 @@ namespace BranchingStoryCreator
             }
           
             ToggleInputFields(false);
+            tempStory = "";
             treStory.Nodes.Clear();
-            GameObj = null;
+            imgBg.Image = null;
+            treeSnapshot = null;
+
+            if (gameName != null)
+                GameServer.RemoveGame(gameName);
+
+            gameName = "";
             
         }
 
@@ -930,30 +1047,31 @@ namespace BranchingStoryCreator
         {
             CloseCurrentProject();
 
-            string projectDirectory = GameObject.GetWindowsProjectFolder();
-            string projectName = GetProjectName(projectDirectory);
+            string projectName = GetProjectName();
 
             //Abort creation.
             if (projectName == "")
                 return;
 
-            GameObj = GameObject.CreateNewProject(projectName, projectDirectory);
+            EditResponse response = GameServer.CreateNewProject(projectName);
 
-            if (GameObj != null)
-            {              
-                GameObj.editor.SyncTreeView(ref treStory);
-                ProjectInitialization(GameObj.ProjectTreePath());
-                GameObj.editor.SaveProject(); //Save for first time to create xml file.
+            if (response.errMsg == "")
+            {
+                //Creation successful.
+                gameName = response.gameName;
+                DisplayProjectInEditor(projectName);
+                string treePath = GameServer.GetTreePath(gameName);
+                ProjectInitialization(treePath);
             }
             else
-                MessageBox.Show("Unable to load Game Object.");
+            {
+                MessageBox.Show(string.Format("Unable to create new project. {0}", response.errMsg));
+            }
         }
 
-        private static string GetProjectName(string projectsDir)
+        private static string GetProjectName()
         {
-            if (!Directory.Exists(projectsDir))
-                return "";
-          
+         
             string prompt = "Please enter a name for the new game project. The name must be alpha-numeric, and shorter than 25 characters. Space will be converted to underscores.";
             string title = "Give the new project a name.";
             InputBox box = new InputBox(title, prompt);
@@ -973,10 +1091,7 @@ namespace BranchingStoryCreator
 
                 if (projName != "")
                 {
-                    projectExists = Directory.Exists(projectsDir + "\\" + projName + "\\");
-
-                    if (projectExists)
-                        MessageBox.Show("The project folder for {0} already exists. Please choose a different name.", projName);
+                    break;
                 }
            
             }
@@ -990,14 +1105,38 @@ namespace BranchingStoryCreator
 
             if (File.Exists(filePath))
             {
-                GameObj = new GameObject(filePath);
+
+                //Load into GameServer
+                EditResponse response = GameServer.AddProject(filePath);
+                gameName = response.gameName;
+
+                if (response.errMsg == "")
+                {
+                    //Attempt to display tree.                 
+                    DisplayProjectInEditor(gameName);             
+                }
+
                 ShowMinorMessage("Story Loaded!", 5000);
-                GameObj.editor.SyncTreeView(ref treStory);
                 ProjectInitialization(filePath);
             }
             else
                 ShowMinorMessage("File does not exist: " + filePath, 3000);
 
+        }
+
+        public void DisplayProjectInEditor(string gameName)
+        {
+            GameMeta meta = GameServer.GetGameMeta(gameName);
+            gameName = meta.gameName;
+            if (meta != null)
+            {
+                txtAbout.Text = meta.about;
+                txtAuthor.Text = meta.author;
+                txtGameImg.Text = meta.gameImg;
+            }
+
+            UpdateTreeView();
+            ToggleInputFields(true);
         }
 
         /// <summary>
@@ -1006,9 +1145,17 @@ namespace BranchingStoryCreator
         private void ProjectInitialization(string projectTreePath)
         {
             AddEvents();
-            treStory.SelectedNode = treStory.TopNode;
-            Properties.Settings.Default.lastProjectPath = projectTreePath;
-            Properties.Settings.Default.Save();
+            //try
+            //{
+                currentPresentation = GameServer.GetPresentation(gameName, playerID, true);
+                treStory.SelectedNode = treStory.TopNode;
+                Properties.Settings.Default.lastProjectPath = projectTreePath;
+                Properties.Settings.Default.Save();
+            //}
+            //catch (Exception ex)
+            //{
+            //    MessageBox.Show(ex.Message);
+            //}
         }
 
         #endregion
@@ -1050,10 +1197,10 @@ namespace BranchingStoryCreator
         }
 
 
-        private DialogResult ShowPictureDialog()
+        private DialogResult ShowPictureDialog(bool forMeta = false)
         {
 
-            string imgFolder = GameObj.GetBGImagePath();
+            string imgFolder = GameServer.GetBGImageDir(gameName);
             string initialPath = imgFolder + txtImgPath.Text;
 
             OpenFileDialog dlg = new OpenFileDialog();
@@ -1081,12 +1228,20 @@ namespace BranchingStoryCreator
 
                 Bitmap img = new Bitmap(finalPath);
                 imgBg.Image = img;
+
+                if (!forMeta)
+                { 
                 txtImgPath.Text = fileName;
 
                 //Update node for new picture.
                 DataNode data = treStory.SelectedNode.Tag as DataNode;
 
-                SetDataNodeValues(ref data);
+                SetDataNodeValues(data);
+                }
+                else //for meta
+                {
+                    txtGameImg.Text = fileName;
+                }
             }
 
 
@@ -1105,7 +1260,7 @@ namespace BranchingStoryCreator
 
         private void PlayGame()
         {
-            if (GameObj == null)
+            if (treeSnapshot == null)
             {
                 MessageBox.Show("Cannot run an empty game.");
                 return;
@@ -1115,14 +1270,25 @@ namespace BranchingStoryCreator
             if (viewerWindow != null)
                 viewerWindow.Close();
 
-            treStory.SelectedNode = treStory.TopNode;
+            if (viewerWindow == null || viewerWindow.IsDisposed)
+            {
+                viewerWindow = new GameViewer(gameName, playerID);
+                viewerWindow.ContextChanging += new EventHandler(SyncWithGameViewer);
+            }
 
-            GameObj.StartFromBeginning();
-            UpdateGameItemsListView();
-            UpdateGameObjListView();
-
-            viewerWindow = new GameViewer(GameObj);
             viewerWindow.Show();
+        }
+
+        private void StopGame()
+        {
+            soundPlayer.StopAll();
+            currentPresentation = GameServer.GetPresentation(gameName, playerID, true);
+
+            if (viewerWindow != null)
+                if (viewerWindow.Visible)
+                    viewerWindow.Close();
+
+            NavigateToPresentationNode();
         }
 
         private void ToggleInputFields(bool turnOn)
@@ -1156,27 +1322,22 @@ namespace BranchingStoryCreator
                 tabCtrl.SelectedIndex = 0;
         }
 
-        private void UpdateGameObjListView()
+        private void UpdatePlayerDataView()
         {
-            List<string> listItems = GameObj.GetDicValues();
+            PlayerData playerData = GameServer.GetPlayerData(gameName, playerID);
+
+            //Update Variable List.
             lstGameObj.Items.Clear();
-
-            ListView newList = new ListView();
-
-            foreach (string item in listItems)
+            List<string> dicPairs = playerData.dic.GetFormattedPairs();
+            foreach (string item in dicPairs)
                 lstGameObj.Items.Add(item);
-        }
 
-        private void UpdateGameItemsListView()
-        {
-
-            List<string> listItems = GameObj.GetBagValues();
+            //Update Game Items List.
             lstItems.Items.Clear();
-
-            ListView newList = new ListView();
-
-            foreach (string item in listItems)
+            List<string> itemPairs = playerData.items.GetFormattedValues();
+            foreach (string item in itemPairs)
                 lstItems.Items.Add(item);
+
         }
 
         private void UpdateViewerWindow()
@@ -1206,18 +1367,21 @@ namespace BranchingStoryCreator
                 txtAvailIf.Text = data.AvailIf;
 
                 LoadImg(data.ImgPath);
+                SetLastAndCurrent();
                 return;
             }
         }
 
         private static TreeNode FindInTreeView(TreeView tree, DataNode data)
         {
-            if (tree.SelectedNode == null)
-                return null;
+            // See if selected is what we're looking for first.
+            if (tree.SelectedNode != null)
+            {
+                if (tree.SelectedNode.Tag == data)
+                    return tree.SelectedNode;
+            }
 
-            if (tree.SelectedNode.Tag == data)
-                return tree.SelectedNode;
-
+            //If there's no other data, return null;
             if (data == null)
                 return null;
 
@@ -1233,6 +1397,14 @@ namespace BranchingStoryCreator
             return null;
         }
 
+        private static TreeNode FindInTreeView(TreeView tree, string nodeID)
+        {
+            DataNode searchNode = new DataNode();
+            searchNode.ID = nodeID;
+
+            return FindInTreeView(tree, searchNode);
+        }
+
         private static TreeNode FindInTreeView(TreeNode root, DataNode data)
         {
             if (root == null ||
@@ -1242,7 +1414,9 @@ namespace BranchingStoryCreator
             if (root.Tag == null)
                 return null;
 
-            if ((DataNode)root.Tag == data)
+            DataNode thisNode = root.Tag as DataNode;
+
+            if (thisNode.ID == data.ID)
                 return root;
 
             TreeNode found = null;
@@ -1256,6 +1430,118 @@ namespace BranchingStoryCreator
 
             return null;
         }
+
+        private DataNode GetParentOfSelected()
+        {
+            TreeNode selected = treStory.SelectedNode;
+            TreeNode parent = null;
+
+            if (selected == null)
+                return null;
+
+            parent = selected.Parent;
+
+            if (parent == null)
+                return null;
+
+            if (parent.Tag == null)
+                return null;
+
+            return selected.Parent.Tag as DataNode;
+        }
+
+        private void SetLastAndCurrent()
+        {
+            lastParentofSelected = GetParentOfSelected();
+            lastSelected = GetSelectedDataNode();
+        }
+
+        private void NavigateToPresentationNode()
+        {
+            try
+            {
+                if (currentPresentation != null)
+                {
+                    if (currentPresentation.nodeID != null)
+                    {
+                        TreeNode targetNode = FormHelper.GetNode(treStory, currentPresentation.nodeID);
+
+                        if (targetNode != null)
+                            treStory.SelectedNode = targetNode;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Unable to navigate to next node: " + ex.Message);
+            }
+        }
+
+        private void SelectLastOrParentOr(string nodeID)
+        {
+            TreeNode node = null;
+
+            if (nodeID != "")
+            {
+                node = FindInTreeView(treStory, nodeID);
+
+                if (node != null)
+                {
+                    treStory.SelectedNode = node;
+                    return;
+                }
+            }
+            
+
+            if (lastSelected != null)
+            {
+                node = FindInTreeView(treStory, lastSelected);
+
+                if (node != null)
+                {
+                    treStory.SelectedNode = node;
+                    return;
+                }
+            }
+
+            if (lastParentofSelected != null)
+            {
+                node = FindInTreeView(treStory, lastParentofSelected);
+
+                if (node != null)
+                {
+                    treStory.SelectedNode = node;
+                }
+            }
+        }
+
+        private void InvalidateEditorView(DataNode data = null, Presentation current = null)
+        {
+            if (current == null)
+            {
+                currentPresentation = GameServer.GetPresentation(gameName, playerID);
+            }
+
+            if (data == null)
+            {
+                if (treStory.SelectedNode != null)
+                    data = treStory.SelectedNode.Tag as DataNode;
+                else
+                    return;
+            }
+
+            BindDataNodeValues(data);
+            ToggleInputFields(true);
+            UpdatePlayerDataView();
+            if (currentPresentation == null ||
+                data.ID != currentPresentation.nodeID)
+                currentPresentation = currentPresentation = GameServer.GetPresentation(gameName, playerID);
+            UpdateButtonView();
+
+            if (viewerWindow == null || !viewerWindow.Visible)
+                if (chkSoundEnabled.Checked)
+                    soundPlayer.HandleSound(currentPresentation.sound);
+        }
         
 
         #region Image
@@ -1268,7 +1554,7 @@ namespace BranchingStoryCreator
                 return;
             }
 
-            imgPath = Path.Combine(GameObj.GetBGImagePath(), imgPath);
+            imgPath = Path.Combine(GameServer.GetBGImageDir(gameName), imgPath);
 
             Bitmap img = null;
             if (File.Exists(imgPath))
@@ -1278,7 +1564,7 @@ namespace BranchingStoryCreator
             }
             else
             {   //Image not found.
-                string imgMissing = Path.Combine(GameObj.GetBGImagePath(), GameObject.BG_MISSING);
+                string imgMissing = Path.Combine(GameServer.GetBGImageDir(gameName), GameObject.BG_MISSING);
                 if (File.Exists(imgMissing))
                 {
                     img = new Bitmap(imgMissing);
@@ -1293,10 +1579,22 @@ namespace BranchingStoryCreator
 
         #region Buttons
 
+        //Used to show or hide buttons for the current presentation.
         private void UpdateButtonView()
         {
-            GameObj.InvalidatePresentation();
-            List<GameButton> buttonData = GameObj.presentation.buttonData;           
+            //If P is null, hide all buttons. 
+            DataNode node = GetSelectedDataNode();
+
+            if (node == null)
+            {
+                foreach (Button btn in Buttons)
+                    btn.Visible = false;
+
+                return;
+            }
+
+
+            List<GameButton> buttonData = GameObject.GetGameButtons(node);
 
             //Make visible what shows.
             int btnID = 0;
@@ -1309,17 +1607,17 @@ namespace BranchingStoryCreator
             }
 
             //Hide the rest.
-            for (; btnID < Buttons.Count(); btnID++)
+            for (; btnID < Buttons.Length; btnID++)
                 Buttons[btnID].Visible = false;
 
-            //Add Return to start button. Wipe Bag and Dictionary.
-            if (buttonData.Count == 0)
-            {
-                GameButton startButton = new GameButton("Return to Start", "0");
-                Buttons[0].Visible = true;
-                Buttons[0].Text = startButton.PreText;
-                Buttons[0].Tag = startButton;
-            }
+            ////Add Return to start button. Wipe Bag and Dictionary.
+            //if (buttonData.Count == 0)
+            //{
+            //    GameButton startButton = new GameButton("Return to Start", "");
+            //    Buttons[0].Visible = true;
+            //    Buttons[0].Text = startButton.PreText;
+            //    Buttons[0].Tag = startButton;
+            //}
         }
 
         #endregion
@@ -1367,10 +1665,33 @@ namespace BranchingStoryCreator
 
         private string GetDefaultProjectPath()
         {
-            return Path.Combine(GetProjectsDir(), "Sonic_Game", "Sonic_Game" + StoryProject.PROJECT_EXT);
+            string path = Path.Combine(GetProjectsDir(), "Sonic_Game");
+            path = Path.Combine(path, "Sonic_Game" + StoryProject.PROJECT_EXT);
+            return path;
         }
 
         #endregion
+
+        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            AboutBox about = new AboutBox();
+            about.ShowDialog();
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         
     }

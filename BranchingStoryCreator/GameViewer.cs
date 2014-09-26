@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using VerticalProgressBar;
 using System.IO;
+using BranchingStoryCreator.Web;
+using BranchingStoryCreator.Forms;
 
 namespace BranchingStoryCreator
 {
@@ -19,37 +19,45 @@ namespace BranchingStoryCreator
         const string CANCEL_STRING = "$$";
 
         Random Rand;
-        GameObject GameObj;    
+        Presentation currentPresentation;
+        WinSound soundPlayer;
         Button[] Buttons;
         Point[] ButtonLocs;
         int ButtonAddSpace;
         bool PrintAll;
         bool CancelPrinter;
         string gotoButtonID;
+
+        string playerID = "0";
+        string gameName = "Sonic_Game";
+
         
 
         #region Init Load Construct
 
-        public GameViewer(GameObject gameObj)
+        public GameViewer(string gameName, string playerID)
         {
             InitializeComponent();
-            Init(gameObj);
+            Init(gameName, playerID);
         }
 
         private void GameViewer_Load(object sender, EventArgs e)
         {
         }
 
-        private void Init(GameObject gameObj)
+        private void Init(string gameName, string playerID)
         {
             this.Rand = new Random();
-            this.GameObj = gameObj;
+            soundPlayer = new WinSound();
             this.DoubleBuffered = true;
-            this.gotoButtonID = ""; 
+            this.gotoButtonID = "";
+            this.gameName = gameName;
+            this.playerID = playerID;
+
             InitButtons();
             AddEvents();
 
-            chkSoundEnabled.Checked = GameObj.SoundEnabled;
+            //chkSoundEnabled.Checked = GameObj.SoundEnabled;
 
             BindScene();            
         }
@@ -65,7 +73,7 @@ namespace BranchingStoryCreator
 
             ButtonLocs = new Point[5];
 
-            for (int i = 0; i < Buttons.Count(); i++)
+            for (int i = 0; i < Buttons.Length; i++)
                 ButtonLocs[i] = new Point(Buttons[i].Location.X, Buttons[i].Location.Y);
 
             ButtonAddSpace = (Buttons[1].Location.X - Buttons[0].Location.X) / 2;
@@ -77,26 +85,54 @@ namespace BranchingStoryCreator
 
         private void BindScene()
         {
+
             rtfStory.Text = "";
             rtfStory.Update();
 
-            PresentationObject presentation = GameObj.presentation;
-            DisplayMainImg(presentation.imgURL);
+            if (currentPresentation == null)
+                currentPresentation = GameServer.GetPresentation(gameName, playerID, true);
 
-            DisplayLife(presentation.life);
-            DisplayMana(presentation.mana);
-            DisplayStamina(presentation.stamina);
+            if (currentPresentation.errMsg != "")
+            {
+                MessageBox.Show("Presentation Error: " + currentPresentation.errMsg);
+                return;
+            }
 
-            PrintAll = false;
-            CancelPrinter = false;
-           // DisplayStoryOverPeriod(2000);
-            DisplayStoryAtRate(50);
 
-            HideButtons();
-            HandleItems(presentation);
+            if (currentPresentation.inputPending)
+            {
+                //Show the input box.
+                InputBox box = new InputBox("Enter text.", currentPresentation.inputPrompt);
+                box.ShowDialog();
+                PresentationRequest request = new PresentationRequest(gameName, playerID);
+                request.textResponse = box.textResponse;
+                currentPresentation = GameServer.GetPresentation(request);
+                BindScene();
+            }
+            else //Just show the presentation.
+            {
+                DisplayMainImg(currentPresentation.imgURL);
+                DisplayLife(currentPresentation.life);
+                DisplayMana(currentPresentation.mana);
+                DisplayStamina(currentPresentation.stamina);
+                DisplaySound(currentPresentation.sound);
+                PrintAll = false;
+                CancelPrinter = false;
+                // DisplayStoryOverPeriod(2000);
+                DisplayStoryAtRate(50);
+                HideButtons();
+                HandleItems(currentPresentation);
+                pbrLife.Focus();
+            }
 
-            pbrLife.Focus();
 
+
+        }
+
+        private void DisplaySound(PresentSound presentSound)
+        {
+            if (chkSoundEnabled.Checked)
+                soundPlayer.HandleSound(presentSound);
         }
 
         private void DisplayMainImg(string mainImg)
@@ -155,8 +191,8 @@ namespace BranchingStoryCreator
         }
 
         private void DisplayStoryOverPeriod(int timeSpan)
-        {         
-            int storyLen = GameObj.presentation.story.Length;
+        {
+            int storyLen = currentPresentation.story.Length;
 
             if (storyLen == 0)
                 return;
@@ -167,7 +203,7 @@ namespace BranchingStoryCreator
             StoryPrintingArgs printArgs = new StoryPrintingArgs(delay, 0, "", PrintCode.PrintSingle);
 
             if (bwStoryWriter.IsBusy)
-                rtfStory.Text = GameObj.presentation.story;
+                rtfStory.Text = currentPresentation.story;
             else
                 bwStoryWriter.RunWorkerAsync(printArgs);
         }
@@ -177,7 +213,7 @@ namespace BranchingStoryCreator
             StoryPrintingArgs printArgs = new StoryPrintingArgs(delay, 0, "", PrintCode.PrintSingle);
 
             if (bwStoryWriter.IsBusy)
-                rtfStory.Text = GameObj.presentation.story;
+                rtfStory.Text = currentPresentation.story;
             else
                 bwStoryWriter.RunWorkerAsync(printArgs);
         }
@@ -203,15 +239,16 @@ namespace BranchingStoryCreator
 
         public void ForceUpdate()
         {
-            GameObj.InvalidatePresentation();
-            BindScene();
+            throw new NotImplementedException();
+            //GameObj.InvalidatePresentation();
+            //BindScene();
         }
 
         #endregion
 
         #region Items
 
-        private void HandleItems(PresentationObject presentation)
+        private void HandleItems(Presentation presentation)
         {
             int numberOfItems = presentation.items.Count;
 
@@ -241,7 +278,7 @@ namespace BranchingStoryCreator
             panBag.Location = new Point(bagBottomLeft.X, bagBottomLeft.Y - bagHeight);
         }
 
-        private void ArrangeItems(PresentationObject presentation, int numberOfItems)
+        private void ArrangeItems(Presentation presentation, int numberOfItems)
         {
             panBag.Controls.Clear();
               int leftColX = MARGIN;
@@ -265,7 +302,8 @@ namespace BranchingStoryCreator
                 try
                 {
                     if (!File.Exists(itemURL)) //If img not found, set img missing.
-                        itemURL = Path.Combine(GameObj.GetItemImgPath(), GameObject.ITEM_MISSING);
+                        itemURL = presentation.itemImgMissing;
+
                     itemBox.Image = new Bitmap(itemURL);                              
                 }
                 catch (Exception)
@@ -314,18 +352,18 @@ namespace BranchingStoryCreator
         {
             int buttonShiftRightAmount = 0;
 
-            if (activeButtons == 0)
-            {
-                ShowRestartButton();
-                return;
-            }
+            //if (activeButtons == 0)
+            //{
+            //    ShowRestartButton();
+            //    return;
+            //}
 
             PlaceButtonsHome();
 
             int placesToMove = 5 - activeButtons;
             buttonShiftRightAmount = placesToMove * ButtonAddSpace;
 
-            for (int i = 0; i < Buttons.Count(); i++)
+            for (int i = 0; i < Buttons.Length; i++)
             {
                 Buttons[i].Location = new Point(
                     Buttons[i].Location.X + buttonShiftRightAmount,
@@ -341,7 +379,7 @@ namespace BranchingStoryCreator
 
         private void PlaceButtonsHome()
         {
-            for (int i = 0; i < Buttons.Count(); i++)
+            for (int i = 0; i < Buttons.Length; i++)
             {
                 Buttons[i].Location = new Point(ButtonLocs[i].X, ButtonLocs[i].Y);
             }
@@ -366,15 +404,15 @@ namespace BranchingStoryCreator
 
         }
 
-        private void HandleButtons(PresentationObject presentation, bool randomizeButtonOrder = false)
+        private void HandleButtons(Presentation presentation, bool randomizeButtonOrder = false)
         {
             List<GameButton> gameButtons = presentation.buttonData;
 
-            if (randomizeButtonOrder)
-                RandomizeButtons(ref gameButtons);
+            //if (randomizeButtonOrder)
+            //    RandomizeButtons(ref gameButtons);
             
             int showCount = gameButtons.Count;
-            int maxButtons = Buttons.Count();
+            int maxButtons = Buttons.Length;
 
             for (int i = 0; i < maxButtons; i++)
             {
@@ -393,56 +431,63 @@ namespace BranchingStoryCreator
                 PerformButtonLayout(showCount);       
         }
 
-        private void ShowRestartButton()
-        {
-            PlaceButtonsHome();
-            foreach (Button btn in Buttons)
-                btn.Visible = false;
+        //private void ShowRestartButton()
+        //{
+        //    PlaceButtonsHome();
+        //    foreach (Button btn in Buttons)
+        //        btn.Visible = false;
 
-            Buttons[2].Text = "End. Restart?";
-            Buttons[2].Visible = true;
-        }
+        //    Buttons[2].Text = "End. Restart?";
+        //    Buttons[2].Visible = true;
+        //}
 
         private void btn_Click(object sender, EventArgs e)
         {
             Button btn = sender as Button;
+            string btnID = btn.Name.Replace("btn", "");
 
-            if (IsRestartShowing())
+            if (bwStoryWriter.IsBusy)
             {
-                GameObj.StartFromBeginning();
+                //Wait for the Background worker to initiate the button press.
+                //gotoButtonID = gameButton.NodeID;
+                PrintAll = true;
+                bwStoryWriter.CancelAsync();
             }
-            else
+            else //Just go.
             {
-                GameButton gameButton = btn.Tag as GameButton;
+                currentPresentation = GameServer.GetPresentation(gameName, playerID, btnID);
 
-                if (bwStoryWriter.IsBusy)
+                if (currentPresentation.errMsg != "")
                 {
-                    //Wait for the Background worker to initiate the button press.
-                    //gotoButtonID = gameButton.NodeID;
-                    PrintAll = true;
-                    bwStoryWriter.CancelAsync();                              
+                    MessageBox.Show("Presentation Error: " + currentPresentation.errMsg);
                 }
-                else //Just go.
-                    if (!GameObj.ButtonPress(gameButton.NodeID, true))
-                        MessageBox.Show("Unable to navigate to node: " + gameButton.NodeID);             
+                else
+                {
+                    BindScene();
+                }
+
+                //sync Game editor with viewer.
+                if (ContextChanging != null)
+                    ContextChanging(this, EventArgs.Empty);
             }
+
         }
 
-        private bool IsRestartShowing()
-        {
-            return (!Buttons[1].Visible &&
-                     Buttons[2].Visible && //Buttons 1,3 not visible, button 2 visible = Restart condition.
-                    !Buttons[3].Visible);
-        }
+        //private bool IsRestartShowing()
+        //{
+        //    return (!Buttons[1].Visible &&
+        //             Buttons[2].Visible && //Buttons 1,3 not visible, button 2 visible = Restart condition.
+        //            !Buttons[3].Visible);
+        //}
 
         #endregion
 
         #region Checkboxes
 
-        private void chkToggleSound_CheckedChanged(object sender, EventArgs e)
+        private void chkSoundEnabled_CheckedChanged(object sender, EventArgs e)
         {
-            if (GameObj != null)
-                GameObj.ToggleSound(chkSoundEnabled.Checked);
+            if (chkSoundEnabled.Checked == false)
+                soundPlayer.StopAll();
         }
 
         #endregion
@@ -451,8 +496,6 @@ namespace BranchingStoryCreator
 
         private void AddEvents()
         {
-            GameObj.Presentation_Changed += OnPositionChanged;
-
             foreach(Button btn in Buttons)
                 btn.Click += btn_Click;
 
@@ -476,11 +519,8 @@ namespace BranchingStoryCreator
 
         }
 
-
         private void RemoveEvents()
         {
-            GameObj.Presentation_Changed -= OnPositionChanged;
-
             foreach (Button btn in Buttons)
                 btn.Click += btn_Click;
 
@@ -504,7 +544,6 @@ namespace BranchingStoryCreator
             this.MouseClick -= OnMouseClick;
         }
 
-
         private void OnPositionChanged(object sender, EventArgs e)
         {
             BindScene();
@@ -512,7 +551,7 @@ namespace BranchingStoryCreator
 
         private void GameViewer_FormClosing(object sender, FormClosingEventArgs e)
         {
-            GameObj.StopSound();
+            soundPlayer.StopAll();
             bwStoryWriter.CancelAsync();           
         }
 
@@ -539,6 +578,7 @@ namespace BranchingStoryCreator
             }
         }
 
+        public event EventHandler ContextChanging;
 
         #endregion
 
@@ -546,7 +586,7 @@ namespace BranchingStoryCreator
 
         //Get next character to print, and delay.
         private void bwStoryWriter_DoWork(object sender, DoWorkEventArgs e)
-        {        
+        {
             const int CANCEL_CHECK_INTERVAL = 2;
 
             if (e.Argument == null)
@@ -554,30 +594,39 @@ namespace BranchingStoryCreator
                 e.Result = null;
                 return;
             }
-         
+
             StoryPrintingArgs printArgs = e.Argument as StoryPrintingArgs;
-            switch(printArgs.printCode)
+
+            //Don't print nothing, avoid an error.
+            if (printArgs.printedCount >= currentPresentation.story.Length)
+            {
+                printArgs.printCode = PrintCode.StopPrinting;
+                e.Result = printArgs;
+                return;
+            }
+
+            switch (printArgs.printCode)
             {
                 case PrintCode.PrintAll:
                     break;
                 case PrintCode.PrintSingle:
-                    printArgs.nextChar = GameObj.presentation.story[printArgs.printedCount].ToString();
+                    printArgs.nextChar = currentPresentation.story[printArgs.printedCount].ToString();
 
                     if (printArgs.nextChar == Environment.NewLine)
                         printArgs.nextChar = "";
 
-                    for (int time = 0; time < printArgs.delay; time+= CANCEL_CHECK_INTERVAL)
+                    for (int time = 0; time < printArgs.delay; time += CANCEL_CHECK_INTERVAL)
                     {
                         //Sleep 
-                        System.Threading.Thread.Sleep(CANCEL_CHECK_INTERVAL); 
- 
+                        System.Threading.Thread.Sleep(CANCEL_CHECK_INTERVAL);
+
                         //Check for cancel.
                         if (bwStoryWriter.CancellationPending || CancelPrinter)
                         {
-                            printArgs.printCode = (PrintAll) ? PrintCode.PrintAll : PrintCode.StopPrinting;   
-                            break;                         
-                        }                                 
-                    }            
+                            printArgs.printCode = (PrintAll) ? PrintCode.PrintAll : PrintCode.StopPrinting;
+                            break;
+                        }
+                    }
                     break;
                 case PrintCode.StopPrinting:
                     break;
@@ -592,12 +641,12 @@ namespace BranchingStoryCreator
             bool bwFinished = false;
 
             StoryPrintingArgs printArgs = e.Result as StoryPrintingArgs;
-            int storyLen = GameObj.presentation.story.Length;
-                 
+            int storyLen = currentPresentation.story.Length;
+
             switch (printArgs.printCode)
             {
                 case PrintCode.PrintAll:
-                    rtfStory.Text = GameObj.presentation.story;
+                    rtfStory.Text = currentPresentation.story;
                     bwFinished = true;
                     break;
                 case PrintCode.PrintSingle:
@@ -624,14 +673,13 @@ namespace BranchingStoryCreator
             {
                 if (gotoButtonID == "")
                 {
-                    HandleButtons(GameObj.presentation, true);
+                    HandleButtons(currentPresentation, true);
                     rtfStory.Focus();
                 }
                 else
                 {
-                    if (!GameObj.ButtonPress(gotoButtonID, true))
-                        MessageBox.Show("Unable to navigate to node: " + gotoButtonID);
-
+                   // if (!GameObj.ButtonPress(gotoButtonID, true))
+                    MessageBox.Show("Unable to navigate to node: " + gotoButtonID);
                     gotoButtonID = "";
                 }
             }
@@ -642,8 +690,11 @@ namespace BranchingStoryCreator
         #endregion
 
 
+
+
     }
 
+    #region Game Viewer Classes and Enums
 
     public enum PrintCode
     {
@@ -690,5 +741,5 @@ namespace BranchingStoryCreator
 
     }
 
-
+    #endregion
 }

@@ -1,13 +1,12 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Linq;
+//using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Xml.Serialization;
 using System.Xml;
 
-namespace BranchingStoryCreator
+namespace BranchingStoryCreator.Web
 {
     [Serializable]
     public class StoryProject
@@ -20,7 +19,7 @@ namespace BranchingStoryCreator
 
         #region Serializable Variables
         public StoryTree storyTree { get; set; }
-        public StoryData storyData { get; set; }
+        public ExtraData storyData { get; set; }
         #endregion
 
         #region Load / Init
@@ -36,12 +35,12 @@ namespace BranchingStoryCreator
             Init(loadedProject.storyTree, loadedProject.storyData);                  
         }
 
-        public StoryProject(StoryTree storyTree, StoryData storyData)
+        public StoryProject(StoryTree storyTree, ExtraData storyData)
         {
             Init(storyTree, storyData);
         }
 
-        private void Init(StoryTree storyTree, StoryData storyData)
+        private void Init(StoryTree storyTree, ExtraData storyData)
         {
             this.storyTree = storyTree;
             this.storyData = storyData;
@@ -91,17 +90,36 @@ namespace BranchingStoryCreator
         }
         #endregion
 
+        #region Supported Formats
+
+        public static string[] GetSupportedImageExt()
+        {
+            string[] imgFormats = new string[]{
+                ".bmp",
+                ".jpg",
+                ".gif",
+                ".png"
+            };
+
+            return imgFormats;
+        }
+
+        #endregion
+
     }
 
     /// <summary>
     /// A dictionary class capable of expanding to include new variables, without breaking serialization.
     /// </summary>
     [Serializable]
-    public class StoryData
+    public class ExtraData
     {
         #region Key Constants
 
         public static string PROJECT_NAME = "projectname";
+        public static string AUTHOR = "author";
+        public static string ABOUT = "about";
+        public static string GAME_IMG = "gameimg";
 
         #endregion
 
@@ -113,8 +131,26 @@ namespace BranchingStoryCreator
 
         public string projectName 
         {
-            get { return this[StoryData.PROJECT_NAME]; }
-            set { this[StoryData.PROJECT_NAME] = value; }
+            get { return this[ExtraData.PROJECT_NAME]; }
+            set { this[ExtraData.PROJECT_NAME] = value; }
+        }
+
+        public string author
+        {
+            get { return this[ExtraData.AUTHOR]; }
+            set { this[ExtraData.AUTHOR] = value; }
+        }
+
+        public string about
+        {
+            get { return this[ExtraData.ABOUT]; }
+            set { this[ExtraData.ABOUT] = value; }
+        }
+
+        public string gameImg
+        {
+            get { return this[ExtraData.GAME_IMG]; }
+            set { this[ExtraData.GAME_IMG] = value; }
         }
 
         #endregion
@@ -125,7 +161,7 @@ namespace BranchingStoryCreator
 
         #region Load / Init
 
-        public StoryData()
+        public ExtraData()
         {
             Init();
         }
@@ -135,9 +171,9 @@ namespace BranchingStoryCreator
             this.storyData = new List<StoryDataItem>();
         }
 
-        public static StoryData GetNewStoryData()
+        public static ExtraData GetNewStoryData()
         {
-            StoryData newData = new StoryData();
+            ExtraData newData = new ExtraData();
             return newData;
         }
 

@@ -4,11 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Media;
-using System.Windows.Forms;
+//using System.Windows.Forms;
 using System.IO;
 using MSScriptControl;
 
-namespace BranchingStoryCreator
+namespace BranchingStoryCreator.Web
 {
     //Remember to make all objects COM visible with [ComVisible(true)] in System.Runtime.InteropServices;
 
@@ -25,7 +25,7 @@ namespace BranchingStoryCreator
         }
     }
 
-    public class GameScript : ScriptControlClass
+    public class PlayerScript : ScriptControlClass
     {
 
         #region Variables
@@ -37,7 +37,9 @@ namespace BranchingStoryCreator
         public static string DIC = "dic";
         public static string TREE = "story";
         public static string BAG = "bag";
+        public static string INPUT = "input";
         public static string SOUND = "play";
+        public static string MUSIC = "music";
 
         public static string LANGUAGE = "vbscript";
 
@@ -46,7 +48,7 @@ namespace BranchingStoryCreator
 
         #region Init / Load
 
-        public GameScript(List<ScriptObject> scriptObjects)
+        public PlayerScript(List<ScriptObject> scriptObjects)
         {
             Init(scriptObjects);
         }
@@ -61,7 +63,6 @@ namespace BranchingStoryCreator
         }
 
         #endregion
-
 
         #region VBScript PreProcessessing.
 
@@ -82,8 +83,9 @@ namespace BranchingStoryCreator
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Invalid evaluation: " + ex.Message);
-                    resultStr = "false";
+                    //MessageBox.Show("Invalid evaluation: " + ex.Message);
+                    //resultStr = "false";
+                    throw ex;
                 }
 
                 if (result is string)
@@ -120,8 +122,8 @@ namespace BranchingStoryCreator
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message);
-                    //throw ex;
+                    //MessageBox.Show(ex.Message);
+                    throw ex;
                 }
             }              
         }

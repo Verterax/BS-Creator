@@ -44,10 +44,10 @@
             this.lblHealth = new System.Windows.Forms.Label();
             this.lblStamina = new System.Windows.Forms.Label();
             this.chkSoundEnabled = new System.Windows.Forms.CheckBox();
+            this.bwStoryWriter = new System.ComponentModel.BackgroundWorker();
             this.pbrMana = new BranchingStoryCreator.VerticalProgressBar();
             this.pbrLife = new BranchingStoryCreator.VerticalProgressBar();
             this.pbrStamina = new BranchingStoryCreator.VerticalProgressBar();
-            this.bwStoryWriter = new System.ComponentModel.BackgroundWorker();
             ((System.ComponentModel.ISupportInitialize)(this.picImg)).BeginInit();
             this.panBag.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox2)).BeginInit();
@@ -227,7 +227,13 @@
             this.chkSoundEnabled.Text = "Sound";
             this.chkSoundEnabled.TextAlign = System.Drawing.ContentAlignment.BottomCenter;
             this.chkSoundEnabled.UseVisualStyleBackColor = false;
-            this.chkSoundEnabled.CheckedChanged += new System.EventHandler(this.chkToggleSound_CheckedChanged);
+            this.chkSoundEnabled.CheckedChanged += new System.EventHandler(this.chkSoundEnabled_CheckedChanged);
+            // 
+            // bwStoryWriter
+            // 
+            this.bwStoryWriter.WorkerSupportsCancellation = true;
+            this.bwStoryWriter.DoWork += new System.ComponentModel.DoWorkEventHandler(this.bwStoryWriter_DoWork);
+            this.bwStoryWriter.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.bwStoryWriter_RunWorkerCompleted);
             // 
             // pbrMana
             // 
@@ -264,12 +270,6 @@
             this.pbrStamina.Style = System.Windows.Forms.ProgressBarStyle.Continuous;
             this.pbrStamina.TabIndex = 0;
             this.pbrStamina.Value = 50;
-            // 
-            // bwStoryWriter
-            // 
-            this.bwStoryWriter.WorkerSupportsCancellation = true;
-            this.bwStoryWriter.DoWork += new System.ComponentModel.DoWorkEventHandler(this.bwStoryWriter_DoWork);
-            this.bwStoryWriter.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.bwStoryWriter_RunWorkerCompleted);
             // 
             // GameViewer
             // 
