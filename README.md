@@ -120,10 +120,8 @@ story.pos = 1
 Since script is executed before a node is displayed, a node that uses the story.pos property will not be shown to the player. Instead, the player will be shown the node for which the story.pos property re-directs to.
 
 
-Feel free to email me @ chris@codehadouken.com
-
 Sincerely,
-Verterax. AKA. Christopher Caldwell.
+Verterax. AKA.
 
 
 
